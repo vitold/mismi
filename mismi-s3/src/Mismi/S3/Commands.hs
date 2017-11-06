@@ -136,10 +136,14 @@ import           X.Control.Monad.Trans.Either (EitherT, eitherT, left, right, bi
 
 import qualified X.Data.Conduit.Binary as XB
 
+-- | Retrieves the 'HeadObjectResponse'. Handles any 404 response by converting to Maybe.
+--
 headObject :: Address -> AWS (Maybe HeadObjectResponse)
 headObject a =
   handle404 . send . f' A.headObject $ a
 
+-- | Checks for the existence of 'Address'.
+--
 exists :: Address -> AWS Bool
 exists a =
   headObject a >>= pure . isJust
@@ -191,21 +195,26 @@ takeObjectSizes b lors =
     in
       Sized bytes $ Address b (Key k)
 
+-- | Delete 'Address'
+--
 delete :: Address -> AWS ()
 delete =
   void . send . f' A.deleteObject
 
+-- | Retrieve the object at 'Address'. Handles any 404 response by converting to Maybe.
 getObject' :: Address -> AWS (Maybe GetObjectResponse)
 getObject' =
   handle404 . send . f' A.getObject
 
+-- | Read contents of 'Address'.
+--
 read :: Address -> AWS (Maybe Text)
 read a = withRetries 5 $ do
   r <- read' a
   z <- liftIO . sequence $ (runResourceT . ($$+- sinkLbs)) <$> r
   pure $ fmap (T.concat . TL.toChunks . TL.decodeUtf8) z
 
--- | WARNING : The returned @ResumableResource@ must be comsumed within the
+-- | WARNING : The returned @ResumableResource@ must be consumed within the
 -- @AWS@ monad. Failure to do so can result in run time errors (recv on a bad
 -- file descriptor) when the @MonadResouce@ cleans up the socket.
 read' :: Address -> AWS (Maybe (ResumableSource (ResourceT IO) BS.ByteString))
