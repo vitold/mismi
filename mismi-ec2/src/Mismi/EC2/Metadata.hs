@@ -23,8 +23,14 @@ import qualified Network.AWS.EC2.Metadata as AWS
 import           Network.HTTP.Conduit (HttpException)
 import           Network.HTTP.Conduit (ManagerSettings (..))
 import           Network.HTTP.Conduit (Manager, newManager)
-import           Network.HTTP.Conduit (responseTimeoutMicro, tlsManagerSettings)
-
+#if MIN_VERSION_http_conduit(2,1,8)
+import           Network.HTTP.Conduit (tlsManagerSettings)
+#else
+import           Network.HTTP.Conduit (conduitManagerSettings)
+#endif
+#if MIN_VERSION_http_client(0,5,0)
+import           Network.HTTP.Client (responseTimeoutMicro)
+#endif
 
 import           P
 
@@ -68,5 +74,10 @@ managerWithDefaultTimeout =
   newManager conduitManagerSettings {
 #endif
     -- The default is normally 30 seconds
-    managerResponseTimeout = responseTimeoutMicro 1000000 {- 1 second -}
+    managerResponseTimeout =
+#if MIN_VERSION_http_client(0,5,0)
+        responseTimeoutMicro 1000000 {- 1 second -}
+#else
+        Just 1000000 {- 1 second -}
+#endif
   }
