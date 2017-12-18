@@ -239,13 +239,6 @@ checkException v f =
       True
     ResponseBodyTooShort _ _ ->
       True
-#endif
-#if MIN_VERSION_http_client(0, 4, 24)
-    TlsExceptionHostPort _ _ _ ->
-      True
-    _ ->
-      f
-#else
     _ ->
       f
 #endif
