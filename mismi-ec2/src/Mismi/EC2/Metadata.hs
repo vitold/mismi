@@ -74,7 +74,7 @@ managerWithDefaultTimeout =
 #endif
     -- The default is normally 30 seconds
     managerResponseTimeout =
-#if MIN_VERSION_http_client(0,5,0)
+#if MIN_VERSION_http_conduit(0,5,0)
         responseTimeoutMicro 1000000 {- 1 second -}
 #else
         Just 1000000 {- 1 second -}
