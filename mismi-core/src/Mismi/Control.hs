@@ -51,7 +51,10 @@ import qualified Network.AWS as A
 import           Network.AWS.Data
 import           Network.AWS.Error
 
-import           Network.HTTP.Client (HttpException (..), HttpExceptionContent (..), responseTimeoutMicro, responseStatus)
+import           Network.HTTP.Client (HttpException (..))
+#if MIN_VERSION_http_client(0,5,0)
+import           Network.HTTP.Client (HttpExceptionContent (..), responseTimeoutMicro, responseStatus)
+#endif
 import           Network.HTTP.Client.Internal (mResponseTimeout)
 import           Network.HTTP.Types.Status
 
@@ -75,9 +78,17 @@ runAWSTWith run err action =
 
 runAWS :: (MonadIO m, MonadCatch m) => Env -> AWS a -> EitherT Error m a
 runAWS e'' =
-  let e' = over envManager (\m -> m { mResponseTimeout = responseTimeoutMicro 60000000 }) e''
-      e = configureRetries 5 e'
-  in EitherT . try . liftIO . rawRunAWS e
+  let
+    e' = over envManager (\m -> m { mResponseTimeout =
+#if MIN_VERSION_http_client(0,5,0)
+        responseTimeoutMicro 60000000
+#else
+        Just 60000000
+#endif
+      }) e''
+    e = configureRetries 5 e'
+  in
+    EitherT . try . liftIO . rawRunAWS e
 
 runAWSWithRegion :: (MonadIO m, MonadCatch m) => Region -> AWS a -> EitherT Error m a
 runAWSWithRegion r a = do
@@ -86,12 +97,20 @@ runAWSWithRegion r a = do
 
 newEnvFromCreds :: (Applicative m, MonadIO m, MonadCatch m) => Region -> AccessKey -> SecretKey -> Maybe SessionToken -> m Env
 newEnvFromCreds r ak sk st = do
+#if MIN_VERSION_amazonka(1,4,4)
   e <- newEnv $ case st of
-                  Nothing ->
-                    FromKeys ak sk
-                  Just st' ->
-                    FromSession ak sk st'
+    Nothing ->
+      FromKeys ak sk
+    Just st' ->
+      FromSession ak sk st'
   pure $ e & envRegion .~ r
+#else
+  newEnv r $ case st of
+    Nothing ->
+      FromKeys ak sk
+    Just st' ->
+      FromSession ak sk st'
+#endif
 
 rawRunAWS :: Env -> AWS a -> IO a
 rawRunAWS e =
@@ -153,7 +172,9 @@ configureRetries i e = e & envRetryCheck .~ err
 checkException :: HttpException -> Bool -> Bool
 checkException v f =
   case v of
-    InvalidUrlException _ _ -> False
+#if MIN_VERSION_http_client(0,5,0)
+    InvalidUrlException _ _ ->
+      False
     HttpExceptionRequest _req content ->
       case content of
         NoResponseDataReceived ->
@@ -199,6 +220,35 @@ checkException v f =
 
         _ ->
           f
+#else
+    NoResponseDataReceived ->
+      True
+    StatusCodeException status _ _ ->
+      status == status500 || status == status503
+    FailedConnectionException _ _ ->
+      True
+    FailedConnectionException2 _ _ _ _ ->
+      True
+    TlsException _ ->
+      True
+    InternalIOException _ ->
+      True
+    HandshakeFailed ->
+      True
+    ResponseTimeout ->
+      True
+    ResponseBodyTooShort _ _ ->
+      True
+#endif
+#if MIN_VERSION_http_client(0, 4, 24)
+    TlsExceptionHostPort _ _ _ ->
+      True
+    _ ->
+      f
+#else
+    _ ->
+      f
+#endif
 
 handle404 :: AWS a -> AWS (Maybe a)
 handle404 =
